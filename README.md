@@ -23,6 +23,10 @@ Run the example script to see the system in action:
 uvicorn src.api.main:app --reload
 ```
 
+Go to 
+```bash
+http://127.0.0.1:8000/static/index.html
+```
 
 ## How it Works
 
