@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Context Compression Visualization</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/umap-js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .memory-visualization {
+            height: 400px;
+            margin-bottom: 20px;
+        }
+        .query-form {
+            display: flex;
+            gap: 10px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .memory-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .memory-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .memory-item:last-child {
+            border-bottom: none;
+        }
+        .memory-type {
+            font-weight: bold;
+            color: #666;
+        }
+        .importance {
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <h1>Context Compression Visualization</h1>
+    
+    <div class="container">
+        <div class="panel">
+            <h2>Memory Visualization</h2>
+            <div id="memory-plot" class="memory-visualization"></div>
+            
+            <h2>Query Interface</h2>
+            <div class="query-form">
+                <input type="text" id="query-input" placeholder="Enter your query...">
+                <button onclick="processQuery()">Query</button>
+            </div>
+            <div id="query-response"></div>
+        </div>
+        
+        <div class="panel">
+            <h2>Memory State</h2>
+            <div id="memory-summary"></div>
+            <div class="memory-list" id="memory-items"></div>
+            <button onclick="clearMemory()">Clear Memory</button>
+        </div>
+    </div>
+
+    <script>
+        let umap = new UMAP({
+            nNeighbors: 15,
+            nComponents: 2,
+            minDist: 0.1,
+            spread: 1.0
+        });
+
+        async function updateVisualization() {
+            const response = await fetch('/memory');
+            const data = await response.json();
+            
+            document.getElementById('memory-summary').innerHTML = data.summary;
+            
+            const memoryList = document.getElementById('memory-items');
+            memoryList.innerHTML = data.items.map(item => `
+                <div class="memory-item">
+                    <span class="memory-type">${item.type}</span>
+                    <p>${item.text}</p>
+                    <span class="importance">Importance: ${item.importance.toFixed(2)}</span>
+                </div>
+            `).join('');
+            
+            const embeddings = data.items.map(item => item.embedding);
+            if (embeddings.length > 0) {
+                const umapResult = umap.fit(embeddings);
+                
+                const trace = {
+                    x: umapResult.map(p => p[0]),
+                    y: umapResult.map(p => p[1]),
+                    mode: 'markers+text',
+                    type: 'scatter',
+                    text: data.items.map(item => item.text),
+                    textposition: 'top center',
+                    marker: {
+                        size: 10,
+                        color: data.items.map(item => item.type === 'long_term' ? '#1f77b4' : '#ff7f0e')
+                    }
+                };
+                
+                const layout = {
+                    title: 'Memory Embeddings Visualization',
+                    showlegend: true,
+                    legend: {
+                        y: 1,
+                        x: 1,
+                        xanchor: 'right',
+                        yanchor: 'top'
+                    }
+                };
+                
+                Plotly.newPlot('memory-plot', [trace], layout);
+            }
+        }
+
+        async function processQuery() {
+            const queryInput = document.getElementById('query-input');
+            const query = queryInput.value;
+            
+            if (!query) return;
+            
+            const response = await fetch('/query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ text: query })
+            });
+            
+            const data = await response.json();
+            document.getElementById('query-response').innerHTML = `
+                <h3>Response:</h3>
+                <p>${data.response}</p>
+            `;
+            
+            queryInput.value = '';
+            updateVisualization();
+        }
+
+        async function clearMemory() {
+            await fetch('/clear-memory', { method: 'POST' });
+            updateVisualization();
+        }
+
+        updateVisualization();
+        
+        setInterval(updateVisualization, 5000);
+    </script>
+</body>
+</html> 
